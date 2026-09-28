@@ -23,7 +23,7 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements.txt
 
-              - name: 启动 HY2 代理
+      - name: 启动 HY2 代理
         env:
           HY2_URL: ${{ secrets.HY2_URL }}
         run: |
