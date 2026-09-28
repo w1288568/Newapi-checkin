@@ -23,6 +23,57 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements.txt
 
+              - name: 启动 HY2 代理
+        env:
+          HY2_URL: ${{ secrets.HY2_URL }}
+        run: |
+          curl -fsSL https://sing-box.app/install.sh | sh
+          python - <<'PY'
+          import json
+          import os
+          from urllib.parse import urlparse, parse_qs, unquote
+
+          url = os.environ["HY2_URL"]
+          p = urlparse(url)
+          q = parse_qs(p.query)
+
+          outbound = {
+              "type": "hysteria2",
+              "tag": "proxy",
+              "server": p.hostname,
+              "server_port": p.port,
+              "password": unquote(p.username or p.password or ""),
+          }
+
+          if q.get("sni"):
+              outbound["tls"] = {
+                  "enabled": True,
+                  "server_name": q["sni"][0]
+              }
+
+          if q.get("insecure") == ["1"]:
+              outbound.setdefault("tls", {})["insecure"] = True
+
+          config = {
+              "log": {"level": "warn"},
+              "inbounds": [{
+                  "type": "mixed",
+                  "tag": "mixed-in",
+                  "listen": "127.0.0.1",
+                  "listen_port": 1080
+              }],
+              "outbounds": [outbound]
+          }
+
+          with open("/tmp/sing-box.json", "w") as f:
+              json.dump(config, f)
+          PY
+
+          sing-box run -c /tmp/sing-box.json > /tmp/sing-box.log 2>&1 &
+          sleep 3
+
+          curl --socks5-hostname 127.0.0.1:1080 https://api.ipify.org
+
       - name: 安装 Playwright 浏览器
         run: playwright install chromium --with-deps
 
@@ -45,4 +96,6 @@ jobs:
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          HTTP_PROXY: http://127.0.0.1:1080
+          HTTPS_PROXY: http://127.0.0.1:1080
         run: xvfb-run --auto-servernum python checkin.py
